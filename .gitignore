@@ -1,0 +1,67 @@
+# 📦 Dependencias
+node_modules/
+
+# 🚀 Expo & Metro
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# 🧠 Modelos de IA Pesados (Evita subir GGUF/bin de gigabytes a Git)
+*.gguf
+*.bin
+*.onnx
+*.tar.gz
+*.zip
+
+# 🤖 Android (Ignorados de compilación local y llaves)
+android/local.properties
+.gradle/
+/android/app/build/
+/android/build/
+*.apk
+*.aab
+*.aar
+*.jks
+*.keystore
+
+# 🍎 iOS (Ignorados nativos de CocoaPods y compilaciones)
+ios/Pods/
+ios/build/
+.symlinks/
+*.orig.*
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# 🔑 Variables de Entorno y Secretos
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+*.pem
+
+# 💻 Editores de Código y Sistema
+.vscode/
+.claude/
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# 📝 TypeScript y Plantillas
+*.tsbuildinfo
+app-example
+
+# 🗂️ Carpetas Nativas Generadas por Expo Prebuild
+# (Descomenta si quieres ignorar por completo las carpetas android/ e ios/ generadas automáticamente)
+# /ios
+# /android

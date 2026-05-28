@@ -29,6 +29,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-av",
+        {
+          "microphonePermission": "Permite acceder al micrófono para transcribir tu voz localmente offline."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

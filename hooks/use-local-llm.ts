@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, LocalLlama } from '@/services/local-llama';
 import { StorageService } from '@/services/storage-service';
 import { DownloadService, MODELS } from '@/services/download-service';
+import { WhisperService } from '@/services/whisper-service';
 
 export function useLocalLlm(sessionId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -62,9 +63,10 @@ export function useLocalLlm(sessionId: string) {
     // Limpieza al desmontar
     return () => {
       isMounted = false;
-      // IMPORTANTE: Liberamos la RAM nativa al salir de la pantalla de chat
-      // para evitar agotar recursos del sistema operativo móvil.
+      // IMPORTANTE: Liberamos la RAM nativa de los dos motores (Texto y Voz)
+      // al salir de la pantalla de chat para optimizar la batería y el rendimiento.
       LocalLlama.unload();
+      WhisperService.unload();
     };
   }, [sessionId]);
 

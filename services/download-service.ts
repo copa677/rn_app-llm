@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-export type ModelFamily = 'qwen' | 'llama';
+export type ModelFamily = 'qwen' | 'llama' | 'whisper';
 
 export interface ModelDefinition {
   id: string;
@@ -66,6 +66,40 @@ export const MODELS: ModelDefinition[] = [
     description: 'IA Llama avanzada de Meta. Excelente lógica de razonamiento y formidable capacidad de redacción. Requiere un celular de gama alta.',
     url: 'https://huggingface.co/lmstudio-community/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
     filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+  }
+];
+
+// Familia de Modelos de Transcripción Whisper
+export const WHISPER_MODELS: ModelDefinition[] = [
+  {
+    id: 'whisper-tiny',
+    name: 'Whisper Tiny (Multilingüe)',
+    family: 'whisper',
+    size: '75 MB',
+    ramRequired: '100 MB',
+    description: 'Modelo de voz ultra-rápido y de consumo mínimo. Transcribe de forma casi instantánea en cualquier celular.',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    filename: 'ggml-tiny.bin'
+  },
+  {
+    id: 'whisper-base',
+    name: 'Whisper Base (Multilingüe)',
+    family: 'whisper',
+    size: '140 MB',
+    ramRequired: '200 MB',
+    description: 'Modelo equilibrado con excelente precisión y velocidad intermedia en español. Ideal para dictado de voz cotidiano.',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+    filename: 'ggml-base.bin'
+  },
+  {
+    id: 'whisper-small',
+    name: 'Whisper Small (Multilingüe)',
+    family: 'whisper',
+    size: '460 MB',
+    ramRequired: '800 MB',
+    description: 'Modelo de alta precisión, excelente para terminología compleja o acentos difíciles. Requiere un celular de gama alta.',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+    filename: 'ggml-small.bin'
   }
 ];
 

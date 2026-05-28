@@ -30,6 +30,7 @@ const MAPPING = {
   'lock.fill': 'lock',
   'bolt.fill': 'flash-on',
   'lightbulb.fill': 'lightbulb-outline',
+  'mic.fill': 'mic',
 } as IconMapping;
 
 /**

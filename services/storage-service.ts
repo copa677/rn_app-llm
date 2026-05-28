@@ -133,5 +133,30 @@ export const StorageService = {
     } catch (error) {
       console.error('Error al guardar modelo seleccionado:', error);
     }
+  },
+
+  /**
+   * Obtiene el ID del modelo de Whisper actualmente seleccionado para la voz.
+   * Por defecto retorna 'whisper-tiny'.
+   */
+  async getSelectedWhisperModelId(): Promise<string> {
+    try {
+      const modelId = await AsyncStorage.getItem('selected_whisper_model_id');
+      return modelId || 'whisper-tiny';
+    } catch (error) {
+      console.error('Error al obtener modelo Whisper seleccionado:', error);
+      return 'whisper-tiny';
+    }
+  },
+
+  /**
+   * Guarda el ID del modelo de Whisper seleccionado para la voz.
+   */
+  async setSelectedWhisperModelId(modelId: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem('selected_whisper_model_id', modelId);
+    } catch (error) {
+      console.error('Error al guardar modelo Whisper seleccionado:', error);
+    }
   }
 };

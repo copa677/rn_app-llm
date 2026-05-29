@@ -126,14 +126,26 @@ ${toolsFormatted}
  */
 function compressApiResponse(toolName: string, data: any): any {
   if (!data) return data;
-  if (data.error || typeof data !== 'object') return data;
+  if (data.error) return data;
 
   try {
+    // Si la respuesta viene envuelta en un objeto { ok: true, data: [...] } (estilo estándar de este backend)
+    if (data.data !== undefined) {
+      const nestedData = data.data;
+      if (Array.isArray(nestedData)) {
+        const limited = nestedData.slice(0, 8);
+        return limited.map(item => compressItem(toolName, item));
+      }
+      return compressItem(toolName, nestedData);
+    }
+
+    // Si es directamente un array de objetos
     if (Array.isArray(data)) {
-      // Limitar a máximo 8 elementos en arrays para no saturar memoria
       const limited = data.slice(0, 8);
       return limited.map(item => compressItem(toolName, item));
     }
+
+    // Si es un objeto directo
     return compressItem(toolName, data);
   } catch (e) {
     return data;

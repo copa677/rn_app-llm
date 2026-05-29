@@ -53,7 +53,7 @@ export const LocalLlama = {
       llamaContext = await initLlama({
         model: modelPath,
         use_mlock: true,      // Bloquear páginas de memoria RAM para evitar paginación lenta
-        n_ctx: 2048,          // Tamaño del contexto de conversación (tokens)
+        n_ctx: 4096,          // Tamaño del contexto de conversación (tokens)
         n_gpu_layers: 99,     // Aceleración de GPU por defecto (Metal en iOS o Vulkan/OpenCL en Android)
         n_threads: 4,         // Hilos de procesamiento óptimos para CPUs móviles
       });
@@ -74,7 +74,8 @@ export const LocalLlama = {
    */
   async generateResponse(
     history: ChatMessage[],
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    customStopTokens?: string[]
   ): Promise<string> {
     if (!llamaContext) {
       console.log('Contexto no inicializado. Iniciando...');
@@ -95,9 +96,6 @@ export const LocalLlama = {
 
     if (isLlama) {
       // Formatear al estilo Llama 3.2 Instruct (Meta)
-      // <|begin_of_text|><|start_header_id|>system<|end_header_id|>
-      // Eres un asistente...<|eot_id|><|start_header_id|>user<|end_header_id|>
-      // Hola<|eot_id|><|start_header_id|>assistant<|end_header_id|>
       prompt += '<|begin_of_text|>';
       
       const hasSystemMessage = history.some(msg => msg.role === 'system');
@@ -124,6 +122,10 @@ export const LocalLlama = {
 
       prompt += `<|im_start|>assistant\n`;
       stopTokens = ['<|im_end|>', '<|im_start|>', 'assistant\n', 'user\n'];
+    }
+
+    if (customStopTokens) {
+      stopTokens = [...stopTokens, ...customStopTokens];
     }
 
     let generatedText = '';

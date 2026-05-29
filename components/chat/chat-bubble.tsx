@@ -1,8 +1,7 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Pressable } from 'react-native';
 import { ThemedText } from '../themed-text';
 import { ChatMessage } from '@/services/local-llama';
-import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 interface ChatBubbleProps {
@@ -13,6 +12,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
+  const [copied, setCopied] = useState(false);
 
   if (isSystem) {
     return (
@@ -38,16 +38,51 @@ export function ChatBubble({ message }: ChatBubbleProps) {
     isUser ? styles.userText : styles.assistantText,
   ];
 
+  const handleLongPress = async () => {
+    try {
+      const Clipboard = require('expo-clipboard');
+      const Haptics = require('expo-haptics');
+
+      await Clipboard.setStringAsync(message.content);
+      // Feedback háptico sutil y de alta calidad
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch (error) {
+      console.error('Error al copiar texto:', error);
+    }
+  };
+
   // Renderizar la burbuja del chat
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      <View style={bubbleStyle}>
-        <ThemedText style={textStyle}>
-          {message.content}
-        </ThemedText>
-        <ThemedText style={[styles.timeText, isUser ? styles.userTimeText : styles.assistantTimeText]}>
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </ThemedText>
+      <View style={{ position: 'relative', maxWidth: '100%' }}>
+        <Pressable
+          style={bubbleStyle}
+          onLongPress={handleLongPress}
+          delayLongPress={350} // Respuesta rápida y táctil
+          android_ripple={{ color: isUser ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)', borderless: false }}
+        >
+          <ThemedText style={textStyle}>
+            {message.content}
+          </ThemedText>
+          <ThemedText style={[styles.timeText, isUser ? styles.userTimeText : styles.assistantTimeText]}>
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </ThemedText>
+        </Pressable>
+
+        {copied && (
+          <View style={[
+            styles.copiedBadge,
+            isUser ? styles.userCopiedBadge : styles.assistantCopiedBadge,
+            { backgroundColor: colorScheme === 'dark' ? '#3A3F42' : '#333333' }
+          ]}>
+            <ThemedText style={styles.copiedText}>📋 Copiado</ThemedText>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -120,5 +155,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  copiedBadge: {
+    position: 'absolute',
+    top: -24,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    zIndex: 99,
+  },
+  userCopiedBadge: {
+    right: 8,
+  },
+  assistantCopiedBadge: {
+    left: 8,
+  },
+  copiedText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

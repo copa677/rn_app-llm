@@ -17,7 +17,7 @@ export default function ChatScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   
   // Invocar al hook del chat con el ID de la conversación
-  const { messages, isLoading, isModelLoaded, error, sendMessage } = useLocalLlm(id as string);
+  const { messages, isLoading, isModelLoaded, error, agentState, sendMessage } = useLocalLlm(id as string);
   
   const flatListRef = useRef<FlatList>(null);
 
@@ -49,7 +49,7 @@ export default function ChatScreen() {
               IA Qwen Offline
             </ThemedText>
             <ThemedText style={styles.headerStatus}>
-              {isLoading ? 'Generando respuesta...' : isModelLoaded ? '100% Local y Offline' : 'Cargando IA...'}
+              {isLoading ? (agentState || 'Generando respuesta...') : isModelLoaded ? '100% Local y Offline' : 'Cargando IA...'}
             </ThemedText>
           </View>
         </View>

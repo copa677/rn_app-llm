@@ -3,12 +3,14 @@ import { ChatMessage, LocalLlama } from '@/services/local-llama';
 import { StorageService } from '@/services/storage-service';
 import { DownloadService, MODELS } from '@/services/download-service';
 import { WhisperService } from '@/services/whisper-service';
+import { AgentService } from '@/services/agent-service';
 
 export function useLocalLlm(sessionId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentState, setAgentState] = useState<string>('');
   
   // Referencia para leer el estado más reciente de los mensajes dentro de callbacks
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -105,27 +107,30 @@ export function useLocalLlm(sessionId: string) {
     setMessages((prev) => [...prev, initialAssistantMessage]);
 
     try {
-      let fullAssistantText = '';
-
-      // 3. Invocar al motor LocalLlama pasándole la conversación para que genere en Streaming
-      await LocalLlama.generateResponse(updatedMessages, (token) => {
-        fullAssistantText += token;
-        
-        // Actualizar reactivamente la burbuja de la IA con el nuevo token acumulado
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: fullAssistantText }
-              : msg
-          )
-        );
-      });
+      // 3. Invocar al bucle inteligente del Agente ReAct (soporta Multitasking y llamadas HTTP)
+      const finalResponse = await AgentService.runAgentLoop(
+        updatedMessages,
+        (textSoFar) => {
+          // Actualizar reactivamente la burbuja con la traza de pensamiento y observación acumulada
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: textSoFar }
+                : msg
+            )
+          );
+        },
+        (state) => {
+          // Actualizar el estado del Agente (ej. "Pensando...", "Llamando a CrearUsuario...")
+          setAgentState(state);
+        }
+      );
 
       // 4. Guardar el historial final completo en base de datos local
       const finalAssistantMessage: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
-        content: fullAssistantText,
+        content: finalResponse,
         timestamp: Date.now(),
       };
       
@@ -133,10 +138,10 @@ export function useLocalLlm(sessionId: string) {
       await StorageService.saveMessages(sessionId, finalHistory);
       
     } catch (err: any) {
-      console.error('Error al generar respuesta offline:', err);
+      console.error('Error al generar respuesta del Agente ReAct:', err);
       
-      // Mostrar el error directamente en la burbuja del asistente en caso de fallo nativo
-      const errorText = '\n[Error de inferencia local: Asegúrate de tener suficiente RAM libre en tu dispositivo o de compilar en build de desarrollo].';
+      // Mostrar el error directamente en la burbuja del asistente
+      const errorText = `\n[Error del Agente ReAct: ${err.message || 'Fallo de inferencia local'}].`;
       
       setMessages((prev) =>
         prev.map((msg) =>
@@ -146,9 +151,10 @@ export function useLocalLlm(sessionId: string) {
         )
       );
 
-      setError(err.message || 'Error durante la inferencia local.');
+      setError(err.message || 'Error durante la inferencia de ReAct.');
     } finally {
       setIsLoading(false);
+      setAgentState('');
     }
   };
 
@@ -157,6 +163,7 @@ export function useLocalLlm(sessionId: string) {
     isLoading,
     isModelLoaded,
     error,
+    agentState,
     sendMessage,
   };
 }

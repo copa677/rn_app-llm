@@ -91,7 +91,7 @@ const ToolRegistry: Record<string, (args: any) => Promise<any>> = {
  */
 const getSystemPrompt = (): string => {
   const toolsFormatted = ERP_TOOLS.map(t => `- **${t.name}** ${t.parameters}: ${t.description}`).join('\n');
-  
+
   return `Eres un Agente ERP local. Resuelve peticiones usando el patrón ReAct:
 
 Thought: [Razonamiento sobre lo que debes hacer]
@@ -116,8 +116,9 @@ ${toolsFormatted}
 === REGLAS IMPORTANTES ===
 1. NUNCA alucines ni inventes el bloque "Observation:". Genera únicamente "Thought:" y "Action: NombreHerramienta{JSON}" en una sola línea, y DETENTE de inmediato para que el sistema ejecute la herramienta.
 2. Si hay múltiples tareas, ejecútalas una por una secuencialmente (Action 1 -> Observation 1 -> Action 2 -> Observation 2...).
-3. Si el ERP devuelve un error, corrígelo en tu Thought/Action o explícaselo al usuario.
-4. Responde en español de forma concisa y profesional.`;
+3. Cada vez que generes una Acción, asegúrate de cerrar la estructura JSON con un carácter '}' justo antes de finalizar la línea. Nunca omitas las llaves de cierre
+4. Si el ERP devuelve un error, corrígelo en tu Thought/Action o explícaselo al usuario.
+5. Responde en español de forma concisa y profesional.`;
 };
 
 /**
@@ -186,6 +187,61 @@ function compressItem(toolName: string, item: any): any {
   return cleaned;
 }
 
+/**
+ * Normaliza las llaves de los argumentos de herramientas traduciendo sinónimos comunes
+ * (como "correo" a "email", o "contraseña" a "password") para que la llamada HTTP
+ * al ERP nunca falle si el modelo local utiliza nombres diferentes.
+ */
+function normalizeToolArgs(toolName: string, args: any): any {
+  if (typeof args !== 'object' || args === null) return args;
+
+  const normalized: any = {};
+
+  // Mapeo exhaustivo de sinónimos comunes (claves en minúscula para comparación insensible)
+  const keyMappings: Record<string, string> = {
+    // Usuarios
+    'name': 'nombre',
+    'correo': 'email',
+    'mail': 'email',
+    'contraseña': 'password',
+    'contrasena': 'password',
+    'pass': 'password',
+    'role': 'rol',
+
+    // Productos e inventario
+    'description': 'descripcion',
+    'desc': 'descripcion',
+    'stock': 'stock_actual',
+    'product_id': 'producto_id',
+    'quantity': 'cantidad',
+    'cant': 'cantidad',
+  };
+
+  for (const key of Object.keys(args)) {
+    const value = args[key];
+    const normalizedKey = keyMappings[key.toLowerCase()] || key;
+    normalized[normalizedKey] = value;
+  }
+
+  // Correcciones específicas por herramienta para IDs cruzados
+  if (toolName === 'CrearUsuario' || toolName === 'ActualizarUsuario') {
+    if (normalized.usuario_id !== undefined && normalized.id === undefined) {
+      normalized.id = normalized.usuario_id;
+    }
+  }
+
+  if (toolName === 'AumentarStock' || toolName === 'DisminuirStock') {
+    if (toolName === 'AumentarStock' && normalized.producto_id !== undefined && normalized.id === undefined) {
+      normalized.id = normalized.producto_id;
+    }
+    if (toolName === 'DisminuirStock' && normalized.id !== undefined && normalized.producto_id === undefined) {
+      normalized.producto_id = normalized.id;
+    }
+  }
+
+  return normalized;
+}
+
 export const AgentService = {
   /**
    * Ejecuta el bucle inteligente de ReAct, administrando el stream,
@@ -197,7 +253,7 @@ export const AgentService = {
     onToken: (token: string) => void,
     onStateChange: (state: string) => void
   ): Promise<string> {
-    
+
     // 1. Construir e inyectar el System Prompt al principio si no existe
     const hasSystemPrompt = history.some(m => m.role === 'system');
     let agentHistory = [...history];
@@ -243,11 +299,11 @@ export const AgentService = {
 
       if (match) {
         const toolName = match[1];
-        
+
         // Extraer los argumentos en JSON si existen justo después del encabezado de la acción
         const remainingText = currentTurnText.substring(match.index! + match[0].length);
         const jsonMatch = remainingText.match(/^\s*(\{.*?\})/s);
-        
+
         let toolArgsRaw = '{}';
         if (jsonMatch) {
           toolArgsRaw = jsonMatch[1];
@@ -261,11 +317,14 @@ export const AgentService = {
         let apiResponseStr = '';
         try {
           const toolArgs = JSON.parse(toolArgsRaw);
-          
+          console.log("toolArgs parseado", toolArgs)
+          const normalizedArgs = normalizeToolArgs(toolName, toolArgs);
+          console.log("toolArgs normalizado", normalizedArgs)
+
           if (ToolRegistry[toolName]) {
-            // Ejecutar la llamada HTTP al ERP
-            const rawResponse = await ToolRegistry[toolName](toolArgs);
-            
+            // Ejecutar la llamada HTTP al ERP con los argumentos normalizados de forma segura
+            const rawResponse = await ToolRegistry[toolName](normalizedArgs);
+
             // Comprimir la respuesta del ERP antes de pasarla a la IA para ahorrar contexto
             const compressedResponse = compressApiResponse(toolName, rawResponse);
             apiResponseStr = JSON.stringify(compressedResponse);
@@ -300,7 +359,7 @@ export const AgentService = {
       } else {
         // Si no hay más acciones, asumimos que llegó a "Final Answer"
         console.log('[ReAct Agente] No se detectaron más acciones. Bucle finalizado.');
-        
+
         // Agregar respuesta de cierre al historial
         agentHistory.push({
           id: Math.random().toString(36).substring(2, 11),
@@ -308,7 +367,7 @@ export const AgentService = {
           content: currentTurnText,
           timestamp: Date.now()
         });
-        
+
         break;
       }
     }

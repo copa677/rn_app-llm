@@ -48,7 +48,7 @@ export const LocalLlama = {
       const modelPath = DownloadService.getModelPath(selectedModel.filename);
 
       console.log('Cargando modelo local en RAM desde:', modelPath);
-      
+
       // Inicializar el contexto nativo de Llama
       llamaContext = await initLlama({
         model: modelPath,
@@ -75,7 +75,8 @@ export const LocalLlama = {
   async generateResponse(
     history: ChatMessage[],
     onToken: (token: string) => void,
-    customStopTokens?: string[]
+    customStopTokens?: string[],
+    grammar?: string
   ): Promise<string> {
     if (!llamaContext) {
       console.log('Contexto no inicializado. Iniciando...');
@@ -97,16 +98,16 @@ export const LocalLlama = {
     if (isLlama) {
       // Formatear al estilo Llama 3.2 Instruct (Meta)
       prompt += '<|begin_of_text|>';
-      
+
       const hasSystemMessage = history.some(msg => msg.role === 'system');
       if (!hasSystemMessage) {
         prompt += `<|start_header_id|>system<|end_header_id|>\n\nEres un asistente de inteligencia artificial amigable, útil y preciso de la familia Llama de Meta. Respondes de forma directa en español y ejecutas de forma 100% offline y local en el celular del usuario.<|eot_id|>\n`;
       }
-      
+
       for (const msg of history) {
         prompt += `<|start_header_id|>${msg.role}<|end_header_id|>\n\n${msg.content}<|eot_id|>\n`;
       }
-      
+
       prompt += `<|start_header_id|>assistant<|end_header_id|>\n\n`;
       stopTokens = ['<|eot_id|>', '<|start_header_id|>', '<|end_of_text|>', 'assistant\n', 'user\n'];
     } else {
@@ -130,17 +131,18 @@ export const LocalLlama = {
 
     let generatedText = '';
 
-    console.log(`Iniciando inferencia local con familia: ${selectedModel.family}...`);
+    console.log(`Iniciando inferencia local con familia: ${selectedModel.family} (Gramática activa: ${!!grammar})...`);
 
     // Ejecutar inferencia nativa con streaming
     await llamaContext.completion(
       {
         prompt: prompt,
         stop: stopTokens, // Tokens de parada dinámicos
-        temperature: 0.7,
+        temperature: grammar ? 0.05 : 0.2, // Ultra baja temperatura si hay gramática activa para máxima precisión JSON
         top_k: 40,
         top_p: 0.9,
-        n_predict: 1024, // Límite de tokens de salida
+        n_predict: 2048, // Límite de tokens de salida
+        grammar: grammar, // Inyección nativa de la gramática libre de contexto
       },
       (tokenData) => {
         const token = tokenData.token;

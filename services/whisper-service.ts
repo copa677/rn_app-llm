@@ -72,19 +72,60 @@ export const WhisperService = {
     try {
       console.log('Iniciando transcripción local offline de:', audioUri);
 
-      // Transcribir forzando el idioma español
+      // Transcribir optimizando parámetros para fiabilidad
       const { promise } = whisperContext.transcribe(audioUri, {
         language: 'es', // Forzar español para mayor precisión
         translate: false,
+        temperature: 0.0, // Evitar creatividad para máxima fidelidad
+        beamSize: 5, // Aumentar calidad de búsqueda de palabras
+
       });
       const { result } = await promise;
 
-      console.log('Transcripción finalizada. Resultado:', result);
-      return result.trim();
+      console.log('Transcripción finalizada (cruda):', result);
+
+      // Aplicar normalización de caracteres especiales
+      const cleanText = this.normalizeSpecialCharacters(result);
+      console.log('Transcripción finalizada (normalizada):', cleanText);
+
+      return cleanText;
     } catch (error) {
       console.error('Error durante la transcripción de audio:', error);
       throw error;
     }
+  },
+
+  /**
+   * Normaliza palabras habladas de puntuación y símbolos a sus respectivos caracteres especiales.
+   */
+  normalizeSpecialCharacters(text: string): string {
+    let normalized = text;
+
+    // 1. Reemplazar "arroba" (y variantes de espaciado)
+    normalized = normalized.replace(/\s*arroba\s*/gi, '@');
+
+    // 2. Reemplazar extensiones de dominio comunes
+    normalized = normalized.replace(/\s*punto\s+com\b/gi, '.com');
+    normalized = normalized.replace(/\s*punto\s+net\b/gi, '.net');
+    normalized = normalized.replace(/\s*punto\s+org\b/gi, '.org');
+    normalized = normalized.replace(/\s*punto\s+es\b/gi, '.es');
+
+    // 3. Quitar espacios accidentales alrededor de símbolos de correo
+    normalized = normalized.replace(/\s*@\s*/g, '@');
+
+    // 4. Reemplazar guiones y barras
+    normalized = normalized.replace(/\s*guion\s+bajo\s*/gi, '_');
+    normalized = normalized.replace(/\s*guión\s+bajo\s*/gi, '_');
+    normalized = normalized.replace(/\s*guion\s+/gi, '-');
+    normalized = normalized.replace(/\s*guión\s+/gi, '-');
+    normalized = normalized.replace(/\s*barra\s+inclinada\s*/gi, '/');
+    normalized = normalized.replace(/\s*barra\s+/gi, '/');
+    normalized = normalized.replace(/\s*diagonal\s*/gi, '/');
+
+    // 5. Corregir posibles espacios dobles residuales
+    normalized = normalized.replace(/\s+/g, ' ');
+
+    return normalized.trim();
   },
 
   /**

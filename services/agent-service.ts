@@ -84,7 +84,10 @@ const ToolRegistry: Record<string, (args: any) => Promise<any>> = {
   'DisminuirStock': (args) => ErpService.disminuirStock(args),
   'RegistrarVenta': (args) => ErpService.registrarVenta(args),
   'RegistrarCompra': (args) => ErpService.registrarCompra(args),
-  'ListarComprasUsuario': (args) => ErpService.listarComprasUsuario(args.id),
+  'ListarComprasUsuario': (args) => {
+    console.log('[ToolRegistry ListarComprasUsuario] args:', JSON.stringify(args));
+    return ErpService.listarComprasUsuario(args.id);
+  },
 };
 
 /**
@@ -224,23 +227,167 @@ function normalizeToolArgs(toolName: string, args: any): any {
     normalized[normalizedKey] = value;
   }
 
-  // Correcciones específicas por herramienta para IDs cruzados
+  // Correcciones específicas por herramienta para IDs cruzados y conversión a tipos correctos (números)
   if (toolName === 'CrearUsuario' || toolName === 'ActualizarUsuario') {
-    if (normalized.usuario_id !== undefined && normalized.id === undefined) {
-      normalized.id = normalized.usuario_id;
+    const userIdVal = normalized.usuario_id ?? normalized.id_usuario ?? normalized.usuario ?? normalized.id ?? normalized.userid;
+    if (userIdVal !== undefined) {
+      normalized.id = Number(userIdVal);
+    }
+  }
+
+  if (toolName === 'ObtenerUsuario' || toolName === 'ListarComprasUsuario') {
+    const userIdVal = normalized.id ?? normalized.usuario ?? normalized.usuario_id ?? normalized.id_usuario ?? normalized.idusuario ?? normalized.userid;
+    if (userIdVal !== undefined) {
+      normalized.id = Number(userIdVal);
+    }
+  }
+
+  if (toolName === 'ObtenerProducto') {
+    const productIdVal = normalized.id ?? normalized.producto ?? normalized.producto_id ?? normalized.id_producto ?? normalized.idproducto ?? normalized.productid;
+    if (productIdVal !== undefined) {
+      normalized.id = Number(productIdVal);
     }
   }
 
   if (toolName === 'AumentarStock' || toolName === 'DisminuirStock') {
-    if (toolName === 'AumentarStock' && normalized.producto_id !== undefined && normalized.id === undefined) {
-      normalized.id = normalized.producto_id;
+    const productIdVal = normalized.producto_id ?? normalized.id_producto ?? normalized.producto ?? normalized.id ?? normalized.productid;
+    if (productIdVal !== undefined) {
+      normalized.id = Number(productIdVal);
+      normalized.producto_id = Number(productIdVal);
     }
-    if (toolName === 'DisminuirStock' && normalized.id !== undefined && normalized.producto_id === undefined) {
-      normalized.producto_id = normalized.id;
+    if (normalized.cantidad !== undefined) normalized.cantidad = Number(normalized.cantidad);
+  }
+
+  if (toolName === 'RegistrarVenta' || toolName === 'RegistrarCompra') {
+    const userIdVal = normalized.usuario_id ?? normalized.id_usuario ?? normalized.usuario ?? normalized.id ?? normalized.userid;
+    if (userIdVal !== undefined) {
+      normalized.usuario_id = Number(userIdVal);
+    }
+
+    const isCompra = toolName === 'RegistrarCompra';
+    const targetDetailKey = isCompra ? 'det_compra' : 'det_venta';
+
+    // Buscar posibles variantes de arreglos de detalle que el modelo pueda generar
+    const possibleDetailKeys = [
+      'det_compra', 'det_venta', 'productos', 'items', 'detalle', 'detalles', 
+      'det_compras', 'det_ventas', 'productos_comprados', 'productos_vendidos', 'compra', 'venta'
+    ];
+
+    let rawDetailArray: any[] | undefined = undefined;
+    for (const dKey of possibleDetailKeys) {
+      if (Array.isArray(normalized[dKey])) {
+        rawDetailArray = normalized[dKey];
+        // Eliminar la clave antigua para dejar limpio el objeto
+        if (dKey !== targetDetailKey) {
+          delete normalized[dKey];
+        }
+        break;
+      }
+    }
+
+    // Si encontramos un detalle, lo normalizamos elemento por elemento
+    if (rawDetailArray) {
+      normalized[targetDetailKey] = rawDetailArray.map((item: any) => {
+        const prodIdVal = item.producto_id ?? item.id_producto ?? item.producto ?? item.id ?? item.product_id;
+        const precioVal = item.precio_unitario ?? item.precio ?? item.precioUnitario ?? item.price;
+        const cantVal = item.cantidad ?? item.cant ?? item.quantity ?? 1;
+
+        return {
+          producto_id: prodIdVal !== undefined ? Number(prodIdVal) : undefined,
+          precio_unitario: precioVal !== undefined ? Number(precioVal) : undefined,
+          cantidad: Number(cantVal),
+        };
+      });
+    } else {
+      // Si el modelo no generó un array pero sí valores sueltos en la raíz,
+      // los empaquetamos de manera defensiva en un array de un solo elemento.
+      const prodIdVal = normalized.producto_id ?? normalized.id_producto ?? normalized.producto ?? normalized.id ?? normalized.product_id;
+      const precioVal = normalized.precio_unitario ?? normalized.precio ?? normalized.precioUnitario ?? normalized.price;
+      const cantVal = normalized.cantidad ?? normalized.cant ?? normalized.quantity;
+
+      if (prodIdVal !== undefined && precioVal !== undefined) {
+        normalized[targetDetailKey] = [{
+          producto_id: Number(prodIdVal),
+          precio_unitario: Number(precioVal),
+          cantidad: cantVal !== undefined ? Number(cantVal) : 1,
+        }];
+        
+        // Limpiar las claves sueltas de la raíz
+        delete normalized.producto_id;
+        delete normalized.id_producto;
+        delete normalized.producto;
+        delete normalized.id;
+        delete normalized.product_id;
+        delete normalized.precio_unitario;
+        delete normalized.precio;
+        delete normalized.precioUnitario;
+        delete normalized.price;
+        delete normalized.cantidad;
+        delete normalized.cant;
+        delete normalized.quantity;
+      }
     }
   }
 
+  console.log(`[normalizeToolArgs] toolName: ${toolName}, entrada:`, JSON.stringify(args), `salida:`, JSON.stringify(normalized));
   return normalized;
+}
+
+/**
+ * Normaliza de manera robusta y tolerante a fallos el nombre de la herramienta devuelta por el clasificador.
+ * Mapea términos genéricos (como "Crear" o "Listar") analizando el texto original del usuario.
+ */
+function normalizeDetectedToolName(toolName: string, query: string): string {
+  const nameClean = toolName.trim();
+  
+  // Si la herramienta ya existe exactamente en el registro, la retornamos tal cual
+  if (ToolRegistry[nameClean]) {
+    return nameClean;
+  }
+  
+  const queryLower = query.toLowerCase();
+  const nameLower = nameClean.toLowerCase();
+  
+  // 1. Mapeo para intenciones genéricas de creación
+  if (nameLower === 'crear' || nameLower === 'registrar' || nameLower === 'agregar' || nameLower === 'añadir') {
+    if (queryLower.includes('compra')) return 'RegistrarCompra';
+    if (queryLower.includes('venta')) return 'RegistrarVenta';
+    if (queryLower.includes('usuario') || queryLower.includes('cliente')) return 'CrearUsuario';
+    if (queryLower.includes('producto') || queryLower.includes('silla') || queryLower.includes('art') || queryLower.includes('stock')) return 'CrearProducto';
+  }
+  
+  // 2. Mapeo para intenciones genéricas de consulta
+  if (nameLower === 'listar' || nameLower === 'mostrar' || nameLower === 'ver' || nameLower === 'obtener' || nameLower === 'buscar') {
+    if (queryLower.includes('compra')) return 'ListarComprasUsuario';
+    if (queryLower.includes('usuario')) return 'ListarUsuarios';
+    if (queryLower.includes('inventario') || queryLower.includes('producto') || queryLower.includes('stock')) return 'ListarInventario';
+  }
+  
+  // 3. Mapeo difuso directo si el clasificador devolvió una palabra clave incompleta
+  if (nameLower.includes('compra')) {
+    if (nameLower.includes('listar') || queryLower.includes('listar') || queryLower.includes('compras')) return 'ListarComprasUsuario';
+    return 'RegistrarCompra';
+  }
+  if (nameLower.includes('venta')) {
+    return 'RegistrarVenta';
+  }
+  if (nameLower.includes('usuario')) {
+    if (nameLower.includes('crear')) return 'CrearUsuario';
+    if (nameLower.includes('actualizar')) return 'ActualizarUsuario';
+    if (nameLower.includes('obtener') || nameLower.includes('buscar')) return 'ObtenerUsuario';
+    return 'ListarUsuarios';
+  }
+  if (nameLower.includes('producto') || nameLower.includes('inventario')) {
+    if (nameLower.includes('crear')) return 'CrearProducto';
+    if (nameLower.includes('obtener') || nameLower.includes('buscar')) return 'ObtenerProducto';
+    return 'ListarInventario';
+  }
+  if (nameLower.includes('stock')) {
+    if (nameLower.includes('aumentar')) return 'AumentarStock';
+    if (nameLower.includes('disminuir') || nameLower.includes('quitar')) return 'DisminuirStock';
+  }
+
+  return nameClean;
 }
 
 export const AgentService = {
@@ -252,7 +399,7 @@ export const AgentService = {
   /**
    * Ejecuta el pipeline inteligente de 4 pasos (Enfoque B):
    * 1. Clasificación rápida del intento (charla directa vs. llamada a herramienta del ERP).
-   * 2. Extracción de parámetros estructurados bajo estricto control de la gramática GBNF.
+   * 2. Extracción de parámetros estructurados bajo estricto control de la gramática.
    * 3. Despacho dinámico de la llamada HTTP, normalización y compresión.
    * 4. Explicación/Sintetizador final fluido de los resultados del ERP en español.
    */
@@ -302,13 +449,16 @@ Respuesta:`;
     console.log('[ReAct Agente] Ejecutando Paso 1 (Clasificador)...');
     const rawClassifierResponse = await LocalLlama.generateResponse(
       classifierHistory,
-      () => {}, // Silencioso
+      () => { }, // Silencioso
       ['\n', 'TOOL: Ninguna\n']
     );
 
     const toolMatch = rawClassifierResponse.match(/TOOL:\s*(\w+)/i);
-    const detectedTool = toolMatch ? toolMatch[1] : 'Ninguna';
-    console.log(`[ReAct Agente] Intención clasificada: ${detectedTool}`);
+    let detectedTool = toolMatch ? toolMatch[1] : 'Ninguna';
+    
+    // Normalizar de forma flexible e inteligente el nombre de la herramienta devuelta
+    detectedTool = normalizeDetectedToolName(detectedTool, userQuery);
+    console.log(`[ReAct Agente] Intención clasificada (final): ${detectedTool}`);
 
     // Si es charla directa (TOOL: Ninguna), saltar directamente a responder
     if (detectedTool === 'Ninguna' || !ToolRegistry[detectedTool]) {
@@ -327,19 +477,21 @@ Respuesta:`;
     }
 
     // ----------------------------------------------------
-    // PASO 2: Extractor Estructurado de Parámetros GBNF
+    // PASO 2: Extractor Estructurado de Parámetros
     // ----------------------------------------------------
     onStateChange('Extrayendo parámetros...');
-    onToken(`*Analizando petición...*\n*Extrayendo parámetros estructurados con GBNF...*\n`);
+    onToken(`*Analizando petición...*\n*Extrayendo parámetros estructurados...*\n`);
 
-    const extractorPrompt = `Extrae un arreglo JSON con la estructura del endpoint ERP correspondiente para satisfacer la siguiente petición del usuario.
+    const extractorPrompt = `Extrae un arreglo JSON con las estructuras de endpoints de ERP necesarias para satisfacer la petición del usuario.
+Si el usuario solicita realizar múltiples acciones diferentes (por ejemplo, crear un usuario y además crear un producto), debes generar un objeto de acción separado para cada una en el arreglo JSON.
+
 Petición: "${userQuery}"`;
 
     const extractorHistory: ChatMessage[] = [
       {
         id: 'extractor-system',
         role: 'system',
-        content: 'Extrae exclusivamente la estructura JSON de la acción ERP requerida en un array. Usa estrictamente las claves válidas.',
+        content: 'Extrae exclusivamente las estructuras JSON de las acciones ERP requeridas en un array. Usa estrictamente las claves válidas. Si hay múltiples tareas independientes, genera un elemento de objeto de acción diferente para cada una. NUNCA mezcles parámetros de productos dentro de un objeto de usuario o viceversa.',
         timestamp: Date.now()
       },
       {
@@ -350,12 +502,12 @@ Petición: "${userQuery}"`;
       }
     ];
 
-    console.log(`[ReAct Agente] Ejecutando Paso 2 (Extractor GBNF) para la herramienta: ${detectedTool}...`);
+    console.log(`[ReAct Agente] Ejecutando Paso 2 (Extractor) para la herramienta: ${detectedTool}...`);
     const gbnfResponse = await LocalLlama.generateResponse(
       extractorHistory,
-      () => {}, // Silencioso
+      () => { }, // Silencioso
       [],
-      GBNF_GRAMMAR // Inyección nativa del compilador GBNF
+      GBNF_GRAMMAR // Inyección nativa del compilador
     );
 
     console.log('[ReAct Agente] Respuesta GBNF recibida:', gbnfResponse);
@@ -421,8 +573,10 @@ Petición: "${userQuery}"`;
       let apiResponseStr = '';
       try {
         const rawData = action.data || {};
+        console.log(`[ReAct Agente] ${mappedToolName} - rawData:`, JSON.stringify(rawData));
         // Aplicar la capa de normalización de claves defensiva (ej. "correo" -> "email")
         const normalizedArgs = normalizeToolArgs(mappedToolName, rawData);
+        console.log(`[ReAct Agente] ${mappedToolName} - normalizedArgs:`, JSON.stringify(normalizedArgs));
 
         // Ejecutar llamada física al Gateway ERP
         const rawResponse = await ToolRegistry[mappedToolName](normalizedArgs);
@@ -452,7 +606,7 @@ Petición original del usuario: "${userQuery}"
 DATOS REALES DEVUELTOS POR EL SERVIDOR DEL ERP (PostgreSQL):
 ${erpResultsBlock}
 
-Instrucción: Escribe una respuesta final amigable en español detallando los datos reales. Nunca alucines identificadores, productos o usuarios que no figuren en los datos del ERP.`;
+Instrucción: Escribe una respuesta final amigable en español detallando los datos reales. Nunca alucines identificadores, productos o usuarios que no figuren en los datos del ERP. Para los montos acumulados globales de compras o ventas, utiliza la etiqueta 'Total' (en lugar de 'Subtotal'), y reserva la palabra 'Subtotal' únicamente para los cálculos individuales por línea de producto.`;
 
     const explainerHistory: ChatMessage[] = [
       {

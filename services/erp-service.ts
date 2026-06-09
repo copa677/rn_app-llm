@@ -26,7 +26,7 @@ export const ErpService = {
     try {
       console.log(`[ERP HTTP] ${method} a ${url}`, body ? JSON.stringify(body) : '');
       const response = await fetch(url, options);
-      
+
       const text = await response.text();
       let data: any;
       try {
